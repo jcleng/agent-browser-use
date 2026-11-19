@@ -27,8 +27,16 @@ RUN chmod +x /usr/local/bin/chromium-docker /usr/local/bin/entrypoint.sh \
  && useradd --create-home --uid 1000 app \
  && mkdir -p /data && chown app:app /data
 
+# Unpacked extensions live on the volume so they survive restarts. With
+# AGENT_BROWSER_USE_EXTENSIONS=1 and no AGENT_BROWSER_USE_EXTENSIONS_DIR, the
+# default folders are <profile dir>/../extensions and /data/extensions.
+ENV AGENT_BROWSER_USE_EXTENSIONS_DIR=/data/extensions
+RUN mkdir -p /data/extensions && chown app:app /data/extensions
+
 USER app
 # Chrome profile (cookies, logins) and chat history live here: mount a volume to keep them.
+# Unpacked browser extensions go in /data/extensions; enable them with
+# AGENT_BROWSER_USE_EXTENSIONS=1 (off by default).
 VOLUME /data
 EXPOSE 3000
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

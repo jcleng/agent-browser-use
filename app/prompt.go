@@ -12,7 +12,11 @@ import (
 	"strings"
 )
 
-const passwordEnv = "AGENT_BROWSER_USE_PASSWORD"
+const (
+	passwordEnv      = "AGENT_BROWSER_USE_PASSWORD"
+	extensionsEnv    = "AGENT_BROWSER_USE_EXTENSIONS"     // true/1/yes = load browser extensions (default off)
+	extensionsDirEnv = "AGENT_BROWSER_USE_EXTENSIONS_DIR" // unpacked extension folders, comma-separated
+)
 
 // askPassword returns what the person typed, or "" if they cancelled / no way to ask.
 func askPassword(msg string) string {

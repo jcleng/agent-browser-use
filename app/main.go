@@ -618,6 +618,11 @@ func main() {
 	fl.StringVar(&bo.UploadDir, "uploads", "", "folder the agent may upload files from (empty = \"uploads\" next to the profile folder)")
 	fl.StringVar(&bo.StateDir, "states", "", "folder for saved logins/sessions (empty = \"states\" next to the profile folder)")
 	fl.StringVar(&bo.FlowDir, "flows", "", "folder for recorded flows (empty = \"flows\" next to the profile folder)")
+	// Extensions are off unless asked for. The environment variable is the main
+	// switch (containers and compose set it); the flag overrides it.
+	extOn := boolEnv(extensionsEnv)
+	fl.BoolVar(&extOn, "extensions", extOn, "load browser extensions (default: off, or "+extensionsEnv+"=true)")
+	extDirs := fl.String("extensions-dir", os.Getenv(extensionsDirEnv), "with -extensions: unpacked extension folders to load, comma-separated (empty = the ones already installed in the profile)")
 	var ao AgentOptions
 	fl.Float64Var(&ao.Speed, "agent-speed", 0, "pace of the AI agent's cursor and typing, for people who want to follow it: 0 instant, 1 normal, 2 slower")
 	fl.BoolVar(&ao.OpenViewer, "open", true, "open the web UI in your browser when the agent starts and nobody is watching")
@@ -632,6 +637,33 @@ func main() {
 	doUpdate := fl.Bool("update", false, "update this program to the latest release and exit")
 	fl.BoolVar(doUpdate, "u", false, "update to the latest release (short for -update)")
 	fl.Parse(args)
+	// An explicit -extensions flag wins; naming folders only implies turning it on
+	// when -extensions was not given, so -extensions=false really stays off.
+	extSet := false
+	fl.Visit(func(f *flag.Flag) {
+		if f.Name == "extensions" {
+			extSet = true
+		}
+	})
+	if *extDirs != "" && (!extSet || extOn) {
+		extOn = true
+	}
+	if extOn {
+		if *extDirs == "" { // load-extension needs a folder: default to extensions/ next to the profile
+			if abs, err := filepath.Abs(bo.Profile); err == nil {
+				*extDirs = filepath.Join(filepath.Dir(abs), "extensions")
+			}
+		}
+		bo.Extensions = *extDirs
+		if dirs := extensionDirs(*extDirs); len(dirs) == 0 {
+			log.Printf("Browser extensions: on, but no unpacked extension folder found in %q "+
+				"(put folders with manifest.json there, or set %s); Chromium tells extensions are disabled", *extDirs, extensionsDirEnv)
+		} else {
+			log.Printf("Browser extensions: on, loading %d from %s", len(dirs), *extDirs)
+		}
+	} else {
+		log.Printf("Browser extensions: off (set %s=true to load them)", extensionsEnv)
+	}
 	if authPassword == "" { // mcp.json can set it with "env": {"AGENT_BROWSER_USE_PASSWORD": "..."}
 		authPassword = os.Getenv(passwordEnv)
 	}

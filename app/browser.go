@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -56,6 +57,11 @@ type BrowserOptions struct {
 	UploadDir     string // files the agent may upload
 	StateDir      string // saved cookie/storage states (browser_state)
 	FlowDir       string // recorded flows (browser_get_flow / browser_run_flow)
+	// Extensions turns on browser extension support and lists the unpacked
+	// extension folders to load (comma-separated). Empty = extensions are
+	// disabled, which is the default. Absolute paths win; a relative folder is
+	// resolved against the current directory.
+	Extensions string
 }
 
 // View is the size and image quality of the shared screen.
@@ -280,6 +286,16 @@ func chromeFlags(opt BrowserOptions) []chromedp.ExecAllocatorOption {
 		chromedp.Flag("js-flags", "--max-old-space-size=512"),
 		chromedp.WindowSize(opt.Width, opt.Height),
 	)
+	// Extensions: chromedp's defaults pass --disable-extensions, so the browser never
+	// loads any. -extensions turns that off and loads the given unpacked folders.
+	// --disable-extensions-except is required too: with --disable-extensions alone
+	// Chromium still ignores --load-extension.
+	if ext := extensionDirs(opt.Extensions); len(ext) > 0 {
+		opts = append(opts, chromedp.Flag("disable-extensions", false))
+		for _, kv := range extensionFlagArgs(ext) {
+			opts = append(opts, chromedp.Flag(kv[0], kv[1]))
+		}
+	}
 	if !opt.Engine.Shell { // chrome-headless-shell is always headless and has no "new" mode
 		opts = append(opts, chromedp.Flag("headless", "new"))
 	}
@@ -297,6 +313,49 @@ func chromeFlags(opt BrowserOptions) []chromedp.ExecAllocatorOption {
 		opts = append(opts, chromedp.ExecPath(opt.Engine.Path))
 	}
 	return opts
+}
+
+// extensionFlagArgs returns the name/value pairs Chromium needs to load unpacked
+// extensions from dirs. Kept separate from chromeFlags so the exact flags can be
+// unit-tested without starting a browser.
+func extensionFlagArgs(dirs []string) [][2]string {
+	if len(dirs) == 0 {
+		return nil
+	}
+	list := strings.Join(dirs, ",")
+	return [][2]string{
+		{"disable-extensions-except", list},
+		{"load-extension", list},
+	}
+}
+
+// boolEnv reports whether the named environment variable asks for a feature:
+// true/1/yes/on turn it on, anything else (including unset) leaves it off.
+func boolEnv(name string) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+// extensionDirs splits -extensions into absolute folder paths and drops empty
+// entries. A folder that does not exist is reported, so a typo shows up in the
+// log instead of silently starting Chrome with no extensions.
+func extensionDirs(list string) []string {
+	var out []string
+	for _, raw := range strings.Split(list, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if abs, err := filepath.Abs(raw); err == nil {
+			raw = abs
+		}
+		if st, err := os.Stat(raw); err != nil || !st.IsDir() {
+			log.Printf("extension folder %q not found (pass an unpacked extension folder with manifest.json); skipping", raw)
+			continue
+		}
+		out = append(out, raw)
+	}
+	return out
 }
 
 // Headless Chrome says "HeadlessChrome" in its user agent, and some sites block
