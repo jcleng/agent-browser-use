@@ -66,17 +66,24 @@ func TestExtensionDirsRelative(t *testing.T) {
 	}
 }
 
-func TestBoolEnv(t *testing.T) {
-	for _, v := range []string{"1", "true", "TRUE", "yes", "on", " On "} {
-		t.Setenv(extensionsEnv, v)
-		if !boolEnv(extensionsEnv) {
-			t.Errorf("boolEnv(%q) = false, want true", v)
+func TestExtensionsEnabled(t *testing.T) {
+	// Default: off, whatever the folder variable says (images set the folder).
+	for _, env := range []string{"", "0", "false", "no", "off", "banana"} {
+		if extensionsEnabled(env, false, false) {
+			t.Errorf("extensionsEnabled(%q, no flag) = true, want false", env)
 		}
 	}
-	for _, v := range []string{"", "0", "false", "no", "off", "banana"} {
-		t.Setenv(extensionsEnv, v)
-		if boolEnv(extensionsEnv) {
-			t.Errorf("boolEnv(%q) = true, want false", v)
+	// AGENT_BROWSER_USE_EXTENSIONS turns them on.
+	for _, env := range []string{"1", "true", "TRUE", "yes", "on", " On "} {
+		if !extensionsEnabled(env, false, false) {
+			t.Errorf("extensionsEnabled(%q, no flag) = false, want true", env)
 		}
+	}
+	// An explicit -extensions wins over the environment, in both directions.
+	if extensionsEnabled("1", true, false) {
+		t.Error("-extensions=false must win over the env var")
+	}
+	if !extensionsEnabled("0", true, true) {
+		t.Error("-extensions=true must win over the env var")
 	}
 }

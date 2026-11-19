@@ -336,6 +336,17 @@ func boolEnv(name string) bool {
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
 
+// extensionsEnabled reports whether extensions were asked for. It answers the
+// one question that matters at startup; the folder variable alone must never
+// turn extensions on, because images set it for convenience.
+func extensionsEnabled(envValue string, flagSet, flagValue bool) bool {
+	if flagSet { // an explicit -extensions always wins over the environment
+		return flagValue
+	}
+	v := strings.ToLower(strings.TrimSpace(envValue))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
 // extensionDirs splits -extensions into absolute folder paths and drops empty
 // entries. A folder that does not exist is reported, so a typo shows up in the
 // log instead of silently starting Chrome with no extensions.

@@ -584,6 +584,18 @@ func (c *Client) writeLoop() {
 
 // ---------- main ----------
 
+// extensionsGiven reports whether -extensions appeared on the command line, so
+// that it can beat the environment variable in both directions.
+func extensionsGiven(fl *flag.FlagSet) bool {
+	given := false
+	fl.Visit(func(f *flag.Flag) {
+		if f.Name == "extensions" {
+			given = true
+		}
+	})
+	return given
+}
+
 func main() {
 	// `agent-browser-use mcp …` speaks MCP on stdin/stdout; stdout then carries only MCP messages.
 	stdio := len(os.Args) > 1 && os.Args[1] == "mcp"
@@ -619,8 +631,8 @@ func main() {
 	fl.StringVar(&bo.StateDir, "states", "", "folder for saved logins/sessions (empty = \"states\" next to the profile folder)")
 	fl.StringVar(&bo.FlowDir, "flows", "", "folder for recorded flows (empty = \"flows\" next to the profile folder)")
 	// Extensions are off unless asked for. The environment variable is the main
-	// switch (containers and compose set it); the flag overrides it.
-	extOn := boolEnv(extensionsEnv)
+	// switch (containers and compose set it); an explicit -extensions overrides it.
+	extOn := extensionsEnabled(os.Getenv(extensionsEnv), false, false)
 	fl.BoolVar(&extOn, "extensions", extOn, "load browser extensions (default: off, or "+extensionsEnv+"=true)")
 	extDirs := fl.String("extensions-dir", os.Getenv(extensionsDirEnv), "with -extensions: unpacked extension folders to load, comma-separated (empty = the ones already installed in the profile)")
 	var ao AgentOptions
@@ -637,17 +649,12 @@ func main() {
 	doUpdate := fl.Bool("update", false, "update this program to the latest release and exit")
 	fl.BoolVar(doUpdate, "u", false, "update to the latest release (short for -update)")
 	fl.Parse(args)
-	// An explicit -extensions flag wins; naming folders only implies turning it on
-	// when -extensions was not given, so -extensions=false really stays off.
-	extSet := false
-	fl.Visit(func(f *flag.Flag) {
-		if f.Name == "extensions" {
-			extSet = true
-		}
-	})
-	if *extDirs != "" && (!extSet || extOn) {
-		extOn = true
-	}
+	// -extensions set on the command line beats the environment variable, so
+	// -extensions=false really turns extensions off.
+	extOn = extensionsEnabled(os.Getenv(extensionsEnv), extensionsGiven(fl), extOn)
+	// Only an explicit -extensions (or the env var) turns extensions on. A folder set
+	// via -extensions-dir is just where they are read from: containers set it in the
+	// image so that enabling extensions needs nothing but AGENT_BROWSER_USE_EXTENSIONS=1.
 	if extOn {
 		if *extDirs == "" { // load-extension needs a folder: default to extensions/ next to the profile
 			if abs, err := filepath.Abs(bo.Profile); err == nil {
